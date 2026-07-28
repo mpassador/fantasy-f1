@@ -1,0 +1,36 @@
+name: Update F1 Fantasy Standings
+
+on:
+  schedule:
+    # Runs every Monday at 09:00 UTC — adjust to land after each race weekend
+    - cron: "0 9 * * 1"
+  workflow_dispatch: {}  # lets you trigger it manually from the GitHub Actions tab
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Update scores
+        run: python3 f1_fantasy.py update --year 2026 --include-sprint
+
+      - name: Export static page
+        run: python3 f1_fantasy.py export-html --year 2026
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "f1-fantasy-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add f1_fantasy.db docs/index.html
+          git diff --quiet --cached || git commit -m "Auto-update standings"
+          git push
