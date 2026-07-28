@@ -321,6 +321,149 @@ def show_summary(year: int, db_path: Path):
         print(f"{name:<20}{driver_number:<10}{team_name:<25}{total:<12.1f}")
 
 
+def export_html(year: int, db_path: Path, output_path: Path):
+    """Render the season summary + per-friend breakdowns as a single static HTML file."""
+    import datetime
+    import html as html_escape
+
+    conn = get_db(db_path)
+
+    summary_rows = conn.execute(
+        """
+        SELECT friend_name, driver_number, team_name, SUM(total_points) AS total
+        FROM race_scores
+        WHERE year = ?
+        GROUP BY friend_name, driver_number, team_name
+        ORDER BY total DESC
+        """,
+        (year,),
+    ).fetchall()
+
+    friend_names = [r[0] for r in summary_rows]
+    breakdowns = {}
+    for name in friend_names:
+        breakdowns[name] = conn.execute(
+            """
+            SELECT meeting_name, session_name, driver_points, team_points, total_points
+            FROM race_scores
+            WHERE year = ? AND friend_name = ?
+            ORDER BY date_start
+            """,
+            (year, name),
+        ).fetchall()
+
+    conn.close()
+
+    generated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    def esc(s):
+        return html_escape.escape(str(s))
+
+    summary_html_rows = "\n".join(
+        f"<tr><td class='rank'>{i}</td><td>{esc(name)}</td><td>{esc(driver_number)}</td>"
+        f"<td>{esc(team_name)}</td><td class='pts'>{total:.1f}</td></tr>"
+        for i, (name, driver_number, team_name, total) in enumerate(summary_rows, start=1)
+    )
+
+    breakdown_sections = []
+    for name, rows in breakdowns.items():
+        race_rows = "\n".join(
+            f"<tr><td>{esc(meeting_name)}</td><td>{esc(session_name)}</td>"
+            f"<td>{dp:.1f}</td><td>{tp:.1f}</td><td class='pts'>{total:.1f}</td></tr>"
+            for meeting_name, session_name, dp, tp, total in rows
+        )
+        breakdown_sections.append(f"""
+        <details>
+          <summary>{esc(name)}</summary>
+          <table>
+            <thead><tr><th>Race</th><th>Session</th><th>Driver pts</th><th>Team pts</th><th>Total</th></tr></thead>
+            <tbody>{race_rows}</tbody>
+          </table>
+        </details>""")
+
+    page = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{year} F1 Fantasy Standings</title>
+<style>
+  :root {{
+    --bg: #0e0e12;
+    --card: #17171d;
+    --accent: #e10600;
+    --text: #f2f2f2;
+    --muted: #9a9aa5;
+    --border: #2a2a33;
+  }}
+  * {{ box-sizing: border-box; }}
+  body {{
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 2rem 1rem 4rem;
+  }}
+  .wrap {{ max-width: 760px; margin: 0 auto; }}
+  h1 {{
+    font-size: 1.6rem;
+    margin-bottom: 0.25rem;
+    border-left: 5px solid var(--accent);
+    padding-left: 0.6rem;
+  }}
+  .meta {{ color: var(--muted); font-size: 0.85rem; margin-bottom: 2rem; }}
+  table {{
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card);
+    border-radius: 8px;
+    overflow: hidden;
+  }}
+  th, td {{
+    padding: 0.55rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.92rem;
+  }}
+  th {{ color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.04em; }}
+  td.rank {{ color: var(--muted); }}
+  td.pts {{ font-weight: 700; color: var(--accent); }}
+  tr:last-child td {{ border-bottom: none; }}
+  details {{
+    background: var(--card);
+    border-radius: 8px;
+    margin-bottom: 0.6rem;
+    border: 1px solid var(--border);
+  }}
+  summary {{
+    padding: 0.7rem 1rem;
+    cursor: pointer;
+    font-weight: 600;
+  }}
+  details table {{ border-radius: 0 0 8px 8px; }}
+  h2 {{ font-size: 1.05rem; color: var(--muted); margin: 2.5rem 0 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🏁 {year} F1 Fantasy Standings</h1>
+  <div class="meta">Last updated {generated_at} &middot; data via OpenF1</div>
+
+  <table>
+    <thead><tr><th>#</th><th>Friend</th><th>Driver #</th><th>Team</th><th>Total pts</th></tr></thead>
+    <tbody>{summary_html_rows}</tbody>
+  </table>
+
+  <h2>Race-by-race</h2>
+  {"".join(breakdown_sections)}
+</div>
+</body>
+</html>"""
+
+    output_path.write_text(page)
+    print(f"Wrote static page to {output_path}")
+
+
 def show_breakdown(year: int, friend: str, db_path: Path):
     conn = get_db(db_path)
     rows = conn.execute(
@@ -376,6 +519,11 @@ def main():
     p_sum = sub.add_parser("summary", help="Show friend + driver + team + total points in one table")
     p_sum.add_argument("--year", type=int, required=True)
 
+    p_html = sub.add_parser("export-html", help="Export standings as a static HTML page")
+    p_html.add_argument("--year", type=int, required=True)
+    p_html.add_argument("--output", type=Path, default=Path("docs/index.html"),
+                         help="Output HTML path (default: docs/index.html, for GitHub Pages)")
+
     p_bd = sub.add_parser("breakdown", help="Show one friend's race-by-race scores")
     p_bd.add_argument("--year", type=int, required=True)
     p_bd.add_argument("--friend", type=str, required=True)
@@ -392,6 +540,9 @@ def main():
         show_leaderboard(args.year, args.db)
     elif args.command == "summary":
         show_summary(args.year, args.db)
+    elif args.command == "export-html":
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        export_html(args.year, args.db, args.output)
     elif args.command == "breakdown":
         show_breakdown(args.year, args.friend, args.db)
 
