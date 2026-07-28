@@ -1,0 +1,49 @@
+{
+  "friends": [
+    {
+      "name": "Neto",
+      "driver_number": 63,
+      "team_name": "Ferrari"
+    },
+    {
+      "name": "Artur",
+      "driver_number": 16,
+      "team_name": "Ferrari"
+    },
+    {
+      "name": "Victor C",
+      "driver_number": 44,
+      "team_name": "Ferrari"
+    },
+    {
+      "name": "Gordo",
+      "driver_number": 44,
+      "team_name": "Mercedes"
+    },
+    {
+      "name": "Victor M",
+      "driver_number": 44,
+      "team_name": "Mercedes"
+    },
+    {
+      "name": "Armando",
+      "driver_number": 44,
+      "team_name": "McLaren"
+    },
+    {
+      "name": "Rafa",
+      "driver_number": 44,
+      "team_name": "Audi"
+    },
+    {
+      "name": "Marisa",
+      "driver_number": 3,
+      "team_name": "Red Bull Racing"
+    },
+    {
+      "name": "Mo",
+      "driver_number": 81,
+      "team_name": "Ferrari"
+    }
+  ]
+}
